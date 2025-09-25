@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: partnerconnect-slack-bot
+    env: docker
+    region: oregon
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      # Slack Configuration - Add these in Render dashboard
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+      - key: SLACK_APP_TOKEN
+        sync: false
+      # PartnerConnect Configuration - Add these in Render dashboard
+      - key: PARTNERCONNECT_API_URL
+        value: https://prod-v3.fortiumpartners.io/v3
+      - key: PARTNERCONNECT_CLIENT_ID
+        sync: false
+      - key: PARTNERCONNECT_CLIENT_SECRET
+        sync: false
+      - key: PARTNERCONNECT_TOKEN_ENDPOINT
+        value: https://prod-fs-fortiumpartners.us.auth0.com/oauth/token
+      - key: PARTNERCONNECT_AUDIENCE
+        value: https://prod-v3.fortiumpartners.io
+      # OAuth Configuration - Will be set after deployment
+      - key: OAUTH_REDIRECT_URI
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      # MCP Configuration
+      - key: MCP_SERVER_PATH
+        value: /app/build/index.js
+      - key: MCP_TIMEOUT
+        value: 30000
+      # OpenAI Configuration - Add in Render dashboard
+      - key: OPENAI_API_KEY
+        sync: false
+      # Server Configuration
+      - key: API_TIMEOUT
+        value: 30000
+    healthCheckPath: /health
+    autoDeploy: true
