@@ -5,6 +5,7 @@ const { App } = pkg;
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import express from 'express';
+import fetch from 'node-fetch';
 
 // Load environment
 dotenv.config();
@@ -430,6 +431,70 @@ expressApp.get('/auth/callback', async (req, res) => {
   }
 });
 
+// PhantomBuster webhook forwarding proxy
+// Forwards PhantomBuster completion webhooks to local development backend
+expressApp.post('/webhooks/phantombuster/:container_id', async (req, res) => {
+  try {
+    const { container_id } = req.params;
+    const LOCAL_BACKEND_URL = process.env.LOCAL_BACKEND_URL;
+
+    // Validate configuration
+    if (!LOCAL_BACKEND_URL) {
+      console.error('❌ PhantomBuster webhook proxy not configured - LOCAL_BACKEND_URL missing');
+      return res.status(503).json({
+        error: 'Proxy not configured',
+        detail: 'LOCAL_BACKEND_URL environment variable not set'
+      });
+    }
+
+    console.log(`📨 PhantomBuster webhook received - Container: ${container_id}`);
+    console.log(`   Event: ${req.body?.event || 'unknown'}, Status: ${req.body?.status || 'unknown'}`);
+
+    // Forward webhook to local backend via ngrok tunnel
+    const forwardUrl = `${LOCAL_BACKEND_URL}/api/v1/webhooks/phantombuster/${container_id}`;
+
+    const response = await fetch(forwardUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-PhantomBuster-Signature': req.headers['x-phantombuster-signature'] || '',
+        'X-Forwarded-By': 'render-webhook-proxy',
+        'X-Forwarded-For': req.ip || 'unknown'
+      },
+      body: JSON.stringify(req.body),
+      timeout: 30000 // 30 second timeout
+    });
+
+    const responseText = await response.text();
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      responseData = responseText;
+    }
+
+    console.log(`✅ Webhook forwarded - Container: ${container_id}, Status: ${response.status}`);
+
+    res.status(200).json({
+      status: 'forwarded',
+      container_id,
+      local_backend_status: response.status,
+      local_backend_response: responseData,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ PhantomBuster webhook forward failed:', error.message);
+
+    res.status(502).json({
+      error: 'Failed to forward webhook to local backend',
+      container_id: req.params.container_id,
+      detail: error.message,
+      backend_url: process.env.LOCAL_BACKEND_URL || 'NOT_CONFIGURED'
+    });
+  }
+});
+
 // Start the app
 (async () => {
   try {
@@ -445,10 +510,17 @@ expressApp.get('/auth/callback', async (req, res) => {
       console.log('⚡ Fast Commands: Direct API for immediate responses');
       console.log('🧠 Smart Analysis: MCP + AI for strategic insights');
       console.log('🔒 OAuth Security: Per-user authentication');
+      console.log('📡 Webhook Proxy: PhantomBuster → Local Backend');
       console.log('\nEndpoints:');
       console.log(`📍 Health Check: http://localhost:${port}/health`);
       console.log(`🔐 OAuth Login: http://localhost:${port}/auth/login?state=USER_ID`);
       console.log(`↩️  OAuth Callback: http://localhost:${port}/auth/callback`);
+      console.log(`🪝 PhantomBuster Webhook: http://localhost:${port}/webhooks/phantombuster/:container_id`);
+      if (process.env.LOCAL_BACKEND_URL) {
+        console.log(`   → Forwarding to: ${process.env.LOCAL_BACKEND_URL}`);
+      } else {
+        console.log(`   ⚠️  LOCAL_BACKEND_URL not configured (webhooks will fail)`);
+      }
       console.log('\nTry: @partnerconnect balance');
       console.log('Or:  @partnerconnect analyze collections');
     });
